@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { RotateCcw, CheckCircle, AlertCircle, Search } from "lucide-react";
+import { CheckCircle, AlertCircle, Search, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -10,58 +10,92 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { fetchBorrowedByUser, returnComponent, BorrowRecord } from "@/lib/api";
+import { fetchUserHoldings, returnComponent, Holding } from "@/lib/api";
 import { toast } from "sonner";
 
 const ReturnPage = () => {
   const [userHubId, setUserHubId] = useState("");
-  const [records, setRecords] = useState<BorrowRecord[]>([]);
-  const [selectedRecordId, setSelectedRecordId] = useState("");
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [selectedComponent, setSelectedComponent] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [looking, setLooking] = useState(false);
   const [looked, setLooked] = useState(false);
 
-  const selectedRecord = records.find((r) => r.id === selectedRecordId);
+  const selectedHolding = holdings.find(
+    (h) => h.component === selectedComponent,
+  );
 
-  const lookupBorrowed = async () => {
+  const lookupHoldings = async () => {
     if (!userHubId.trim()) {
       toast.error("Enter your Hub ID first.");
       return;
     }
-    const data = await fetchBorrowedByUser(userHubId.trim());
-    setRecords(data);
-    setSelectedRecordId("");
-    setQuantity(1);
-    setLooked(true);
-    if (data.length === 0) {
-      toast.info("No active borrows found for this Hub ID.");
+
+    setLooking(true);
+    try {
+      const data = await fetchUserHoldings(userHubId.trim());
+      setHoldings(data);
+      setSelectedComponent("");
+      setQuantity(1);
+      setLooked(true);
+      if (data.length === 0) {
+        toast.info("No active borrows found for this Hub ID.");
+      }
+    } catch {
+      toast.error("Failed to fetch holdings. Please try again.");
+    } finally {
+      setLooking(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedRecordId || quantity < 1) {
-      toast.error("Please select a component and quantity.");
+
+    // Client-side validation
+    if (!userHubId.trim()) {
+      toast.error("Please enter your Hub ID.");
       return;
     }
-    if (selectedRecord && quantity > selectedRecord.quantity) {
-      toast.error(`You only borrowed ${selectedRecord.quantity}.`);
+    if (!selectedComponent) {
+      toast.error("Please select a component to return.");
+      return;
+    }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      toast.error("Quantity must be a positive integer.");
+      return;
+    }
+    if (selectedHolding && quantity > selectedHolding.outstanding) {
+      toast.error(`You only have ${selectedHolding.outstanding} borrowed.`);
       return;
     }
 
     setSubmitting(true);
-    const result = await returnComponent(selectedRecordId, quantity);
-    setSubmitting(false);
+    try {
+      const result = await returnComponent(
+        userHubId.trim(),
+        selectedComponent,
+        quantity,
+      );
 
-    if (result.success) {
-      toast.success(result.message, { icon: <CheckCircle className="h-4 w-4" /> });
-      // Refresh
-      const data = await fetchBorrowedByUser(userHubId.trim());
-      setRecords(data);
-      setSelectedRecordId("");
-      setQuantity(1);
-    } else {
-      toast.error(result.message, { icon: <AlertCircle className="h-4 w-4" /> });
+      if (result.success) {
+        toast.success(result.message, {
+          icon: <CheckCircle className="h-4 w-4" />,
+        });
+        // Refresh holdings
+        const data = await fetchUserHoldings(userHubId.trim());
+        setHoldings(data);
+        setSelectedComponent("");
+        setQuantity(1);
+      } else {
+        toast.error(result.message, {
+          icon: <AlertCircle className="h-4 w-4" />,
+        });
+      }
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -70,8 +104,12 @@ const ReturnPage = () => {
       <div className="mx-auto max-w-lg">
         {/* Header */}
         <div className="mb-8 rounded-2xl bg-gradient-to-br from-success/10 via-accent to-primary/5 p-6 border border-success/10">
-          <p className="text-sm font-handwritten text-success text-lg mb-1">Keep the cycle going 🔄</p>
-          <h1 className="text-2xl font-extrabold text-foreground">Return Component</h1>
+          <p className="text-sm font-handwritten text-success text-lg mb-1">
+            Keep the cycle going
+          </p>
+          <h1 className="text-2xl font-extrabold text-foreground">
+            Return Component
+          </h1>
           <p className="text-muted-foreground mt-1">
             Done building? Return components so others can tinker too.
           </p>
@@ -84,7 +122,7 @@ const ReturnPage = () => {
             <div className="flex gap-2">
               <Input
                 id="hubIdReturn"
-                placeholder="e.g. TH001"
+                placeholder="e.g. HUB101"
                 value={userHubId}
                 onChange={(e) => {
                   setUserHubId(e.target.value);
@@ -92,61 +130,108 @@ const ReturnPage = () => {
                 }}
                 maxLength={20}
               />
-              <Button type="button" variant="outline" onClick={lookupBorrowed} className="shrink-0">
-                <Search className="mr-1 h-4 w-4" />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={lookupHoldings}
+                className="shrink-0"
+                disabled={looking}
+              >
+                {looking ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Search className="mr-1 h-4 w-4" />
+                )}
                 Lookup
               </Button>
             </div>
           </div>
 
-          {looked && records.length > 0 && (
-            <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Component */}
+          {/* Holdings list */}
+          {looked && holdings.length > 0 && (
+            <>
               <div className="space-y-2">
-                <Label>Borrowed Component</Label>
-                <Select value={selectedRecordId} onValueChange={setSelectedRecordId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select component to return" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {records.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.componentName} (×{r.quantity})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-muted-foreground text-xs uppercase tracking-wider">
+                  Your Current Holdings
+                </Label>
+                <div className="rounded-lg bg-muted/50 p-3 space-y-1">
+                  {holdings.map((h) => (
+                    <div
+                      key={h.component}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span className="text-card-foreground">
+                        {h.component}
+                      </span>
+                      <span className="font-mono text-muted-foreground">
+                        x{h.outstanding}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              {/* Quantity */}
-              <div className="space-y-2">
-                <Label htmlFor="returnQty">Quantity to Return</Label>
-                <Input
-                  id="returnQty"
-                  type="number"
-                  min={1}
-                  max={selectedRecord?.quantity || 1}
-                  value={quantity}
-                  onChange={(e) => setQuantity(Number(e.target.value))}
-                />
-                {selectedRecord && (
-                  <p className="text-xs text-muted-foreground">
-                    You have {selectedRecord.quantity} borrowed
-                  </p>
-                )}
-              </div>
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {/* Component */}
+                <div className="space-y-2">
+                  <Label>Component to Return</Label>
+                  <Select
+                    value={selectedComponent}
+                    onValueChange={(val) => {
+                      setSelectedComponent(val);
+                      setQuantity(1);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select component to return" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {holdings.map((h) => (
+                        <SelectItem key={h.component} value={h.component}>
+                          {h.component} (x{h.outstanding})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <Button
-                type="submit"
-                className="w-full bg-success text-success-foreground hover:bg-success/90"
-                disabled={submitting}
-              >
-                {submitting ? "Returning..." : "Return Component"}
-              </Button>
-            </form>
+                {/* Quantity */}
+                <div className="space-y-2">
+                  <Label htmlFor="returnQty">Quantity to Return</Label>
+                  <Input
+                    id="returnQty"
+                    type="number"
+                    min={1}
+                    max={selectedHolding?.outstanding || 1}
+                    value={quantity}
+                    onChange={(e) => setQuantity(Number(e.target.value))}
+                  />
+                  {selectedHolding && (
+                    <p className="text-xs text-muted-foreground">
+                      You have {selectedHolding.outstanding} borrowed
+                    </p>
+                  )}
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full bg-success text-success-foreground hover:bg-success/90"
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Returning...
+                    </>
+                  ) : (
+                    "Return Component"
+                  )}
+                </Button>
+              </form>
+            </>
           )}
 
-          {looked && records.length === 0 && (
+          {looked && holdings.length === 0 && (
             <div className="rounded-lg bg-muted p-4 text-center text-sm text-muted-foreground">
               No active borrows found for <strong>{userHubId}</strong>.
             </div>

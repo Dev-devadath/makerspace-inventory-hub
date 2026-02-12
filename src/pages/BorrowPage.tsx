@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Wrench, CheckCircle, AlertCircle } from "lucide-react";
+import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -10,61 +10,93 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  fetchCases,
-  fetchComponentsByCase,
-  borrowComponent,
-  Component,
-} from "@/lib/api";
+import { fetchCases, fetchComponentsByCase, borrowComponent } from "@/lib/api";
 import { toast } from "sonner";
 
 const BorrowPage = () => {
   const [cases, setCases] = useState<string[]>([]);
-  const [components, setComponents] = useState<Component[]>([]);
+  const [components, setComponents] = useState<string[]>([]);
   const [userHubId, setUserHubId] = useState("");
   const [selectedCase, setSelectedCase] = useState("");
-  const [selectedComponentId, setSelectedComponentId] = useState("");
+  const [selectedComponent, setSelectedComponent] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [loadingCases, setLoadingCases] = useState(true);
+  const [loadingComponents, setLoadingComponents] = useState(false);
 
+  // Load cases on mount
   useEffect(() => {
-    fetchCases().then(setCases);
+    setLoadingCases(true);
+    fetchCases()
+      .then(setCases)
+      .catch(() => toast.error("Failed to load cases."))
+      .finally(() => setLoadingCases(false));
   }, []);
 
+  // Load components when case changes
   useEffect(() => {
     if (selectedCase) {
-      fetchComponentsByCase(selectedCase).then(setComponents);
-      setSelectedComponentId("");
+      setLoadingComponents(true);
+      setSelectedComponent("");
+      setComponents([]);
+      fetchComponentsByCase(selectedCase)
+        .then(setComponents)
+        .catch(() => toast.error("Failed to load components."))
+        .finally(() => setLoadingComponents(false));
     } else {
       setComponents([]);
+      setSelectedComponent("");
     }
   }, [selectedCase]);
 
-  const selectedComponent = components.find((c) => c.id === selectedComponentId);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userHubId.trim() || !selectedComponentId || quantity < 1) {
-      toast.error("Please fill in all fields.");
+
+    // Client-side validation
+    if (!userHubId.trim()) {
+      toast.error("Please enter your Hub ID.");
       return;
     }
-    if (selectedComponent && quantity > selectedComponent.availableStock) {
-      toast.error(`Only ${selectedComponent.availableStock} available.`);
+    if (!selectedCase) {
+      toast.error("Please select a case.");
+      return;
+    }
+    if (!selectedComponent) {
+      toast.error("Please select a component.");
+      return;
+    }
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      toast.error("Quantity must be a positive integer.");
       return;
     }
 
     setSubmitting(true);
-    const result = await borrowComponent(userHubId.trim(), selectedComponentId, quantity);
-    setSubmitting(false);
+    try {
+      const result = await borrowComponent(
+        userHubId.trim(),
+        selectedCase,
+        selectedComponent,
+        quantity,
+      );
 
-    if (result.success) {
-      toast.success(result.message, { icon: <CheckCircle className="h-4 w-4" /> });
-      setUserHubId("");
-      setSelectedCase("");
-      setSelectedComponentId("");
-      setQuantity(1);
-    } else {
-      toast.error(result.message, { icon: <AlertCircle className="h-4 w-4" /> });
+      if (result.success) {
+        toast.success(result.message, {
+          icon: <CheckCircle className="h-4 w-4" />,
+        });
+        // Reset form
+        setUserHubId("");
+        setSelectedCase("");
+        setSelectedComponent("");
+        setQuantity(1);
+      } else {
+        toast.error(result.message, {
+          icon: <AlertCircle className="h-4 w-4" />,
+        });
+      }
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -73,20 +105,27 @@ const BorrowPage = () => {
       <div className="mx-auto max-w-lg">
         {/* Header */}
         <div className="mb-8 rounded-2xl bg-gradient-to-br from-secondary/10 via-accent to-primary/5 p-6 border border-secondary/10">
-          <p className="text-sm font-handwritten text-secondary text-lg mb-1">Maker Thursday vibes ✨</p>
-          <h1 className="text-2xl font-extrabold text-foreground">Borrow Component</h1>
+          <p className="text-sm font-handwritten text-secondary text-lg mb-1">
+            Maker vibes
+          </p>
+          <h1 className="text-2xl font-extrabold text-foreground">
+            Borrow Component
+          </h1>
           <p className="text-muted-foreground mt-1">
             Grab what you need to tinker, experiment, and create. Happy making!
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5 rounded-xl border bg-card p-6 shadow-sm">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-5 rounded-xl border bg-card p-6 shadow-sm"
+        >
           {/* Hub ID */}
           <div className="space-y-2">
             <Label htmlFor="hubId">Your Hub ID</Label>
             <Input
               id="hubId"
-              placeholder="e.g. TH001"
+              placeholder="e.g. HUB101"
               value={userHubId}
               onChange={(e) => setUserHubId(e.target.value)}
               maxLength={20}
@@ -96,9 +135,17 @@ const BorrowPage = () => {
           {/* Case */}
           <div className="space-y-2">
             <Label>Case</Label>
-            <Select value={selectedCase} onValueChange={setSelectedCase}>
+            <Select
+              value={selectedCase}
+              onValueChange={setSelectedCase}
+              disabled={loadingCases}
+            >
               <SelectTrigger>
-                <SelectValue placeholder="Select a case" />
+                <SelectValue
+                  placeholder={
+                    loadingCases ? "Loading cases..." : "Select a case"
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
                 {cases.map((c) => (
@@ -114,17 +161,25 @@ const BorrowPage = () => {
           <div className="space-y-2">
             <Label>Component</Label>
             <Select
-              value={selectedComponentId}
-              onValueChange={setSelectedComponentId}
-              disabled={!selectedCase}
+              value={selectedComponent}
+              onValueChange={setSelectedComponent}
+              disabled={!selectedCase || loadingComponents}
             >
               <SelectTrigger>
-                <SelectValue placeholder={selectedCase ? "Select component" : "Select a case first"} />
+                <SelectValue
+                  placeholder={
+                    !selectedCase
+                      ? "Select a case first"
+                      : loadingComponents
+                        ? "Loading components..."
+                        : "Select component"
+                  }
+                />
               </SelectTrigger>
               <SelectContent>
-                {components.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name} ({c.availableStock} available)
+                {components.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -138,15 +193,9 @@ const BorrowPage = () => {
               id="qty"
               type="number"
               min={1}
-              max={selectedComponent?.availableStock || 1}
               value={quantity}
               onChange={(e) => setQuantity(Number(e.target.value))}
             />
-            {selectedComponent && (
-              <p className="text-xs text-muted-foreground">
-                {selectedComponent.availableStock} in stock
-              </p>
-            )}
           </div>
 
           <Button
@@ -154,7 +203,14 @@ const BorrowPage = () => {
             className="w-full bg-secondary text-secondary-foreground hover:bg-secondary/90"
             disabled={submitting}
           >
-            {submitting ? "Borrowing..." : "Borrow Component"}
+            {submitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Borrowing...
+              </>
+            ) : (
+              "Borrow Component"
+            )}
           </Button>
         </form>
       </div>

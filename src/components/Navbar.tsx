@@ -20,10 +20,10 @@ const Navbar = () => {
             <Wrench className="h-5 w-5 text-primary-foreground" />
           </div>
           <div className="flex flex-col leading-tight">
-            <span className="text-lg font-bold tracking-tight text-foreground">
+            <span className="text-xl md:text-2xl font-bold tracking-tight text-foreground">
               TinkerSpace
             </span>
-            <span className="text-[10px] font-handwritten text-muted-foreground -mt-0.5">
+            <span className="text-sm font-handwritten text-muted-foreground -mt-0.5">
               we learn, create & grow together
             </span>
           </div>
