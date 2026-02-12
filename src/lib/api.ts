@@ -19,6 +19,7 @@ export interface Holding {
 export interface StockItem {
   component: string;
   stock: number;
+  caseName: string;
 }
 
 // ─── Cache ────────────────────────────────────────────────────────────────────
@@ -223,4 +224,34 @@ export async function returnComponent(
  */
 export async function fetchLiveStock(): Promise<StockItem[]> {
   return cachedGet<StockItem[]>("getLiveStock", { action: "getLiveStock" });
+}
+
+/**
+ * Fetch inventory with case names.
+ * Builds a component → caseName mapping by fetching all cases and their
+ * components, then merges with live stock data.
+ */
+export async function fetchInventoryWithCases(): Promise<StockItem[]> {
+  const [cases, rawStock] = await Promise.all([fetchCases(), fetchLiveStock()]);
+
+  // Build component → caseName mapping
+  const caseComponentPairs = await Promise.all(
+    cases.map(async (caseName) => {
+      const components = await fetchComponentsByCase(caseName);
+      return components.map((comp) => ({ component: comp, caseName }));
+    }),
+  );
+
+  const componentToCaseMap = new Map<string, string>();
+  for (const pairs of caseComponentPairs) {
+    for (const { component, caseName } of pairs) {
+      componentToCaseMap.set(component, caseName);
+    }
+  }
+
+  // Merge case names into stock items
+  return rawStock.map((item) => ({
+    ...item,
+    caseName: componentToCaseMap.get(item.component) ?? "Unknown",
+  }));
 }

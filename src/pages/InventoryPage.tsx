@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Search, Package, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { fetchLiveStock, invalidateCache, StockItem } from "@/lib/api";
+import { fetchInventoryWithCases, invalidateCache, StockItem } from "@/lib/api";
 import {
   Table,
   TableBody,
@@ -12,15 +12,26 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { toast } from "sonner";
 
 const LOW_STOCK_THRESHOLD = 3;
+const ITEMS_PER_PAGE = 15;
 
 const InventoryPage = () => {
   const [stock, setStock] = useState<StockItem[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const loadStock = (forceRefresh = false) => {
     if (forceRefresh) {
@@ -30,7 +41,7 @@ const InventoryPage = () => {
       setLoading(true);
     }
 
-    fetchLiveStock()
+    fetchInventoryWithCases()
       .then(setStock)
       .catch(() => toast.error("Failed to load inventory."))
       .finally(() => {
@@ -47,6 +58,33 @@ const InventoryPage = () => {
   const filtered = stock.filter((item) =>
     item.component.toLowerCase().includes(search.toLowerCase()),
   );
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedItems = filtered.slice(
+    startIndex,
+    startIndex + ITEMS_PER_PAGE,
+  );
+
+  // Build page numbers with ellipsis
+  const getPageNumbers = (): (number | "ellipsis")[] => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+    const pages: (number | "ellipsis")[] = [1];
+    if (currentPage > 3) pages.push("ellipsis");
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (currentPage < totalPages - 2) pages.push("ellipsis");
+    pages.push(totalPages);
+    return pages;
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -72,8 +110,8 @@ const InventoryPage = () => {
         </div>
       </div>
 
-      <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="relative max-w-md flex-1">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div className="relative max-w-md w-full">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search by component name..."
@@ -82,21 +120,29 @@ const InventoryPage = () => {
             className="pl-10"
           />
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => loadStock(true)}
-          disabled={refreshing}
-          className="shrink-0"
-        >
-          <RefreshCw
-            className={`mr-1.5 h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
-          />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-3">
+          {!loading && (
+            <p className="text-sm text-muted-foreground whitespace-nowrap">
+              Showing {filtered.length === 0 ? 0 : startIndex + 1}–
+              {Math.min(startIndex + ITEMS_PER_PAGE, filtered.length)} of{" "}
+              {filtered.length} items
+            </p>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => loadStock(true)}
+            disabled={refreshing}
+            className="shrink-0"
+          >
+            <RefreshCw
+              className={`mr-1.5 h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
+            />
+            Refresh
+          </Button>
+        </div>
       </div>
 
-      {/* ── Loading overlay ── */}
       {loading ? (
         <div className="flex flex-col items-center justify-center rounded-xl border bg-card py-24 shadow-sm">
           <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
@@ -108,99 +154,150 @@ const InventoryPage = () => {
           </p>
         </div>
       ) : (
-        <div className="rounded-xl border bg-card shadow-sm overflow-hidden relative">
-          {/* Subtle refreshing bar at the top */}
-          {refreshing && (
-            <div className="absolute inset-x-0 top-0 h-1 overflow-hidden rounded-t-xl">
-              <div className="h-full w-1/3 animate-[shimmer_1.2s_ease-in-out_infinite] bg-primary/40 rounded-full" />
+        <>
+          <div className="rounded-xl border bg-card shadow-sm overflow-hidden relative">
+            {refreshing && (
+              <div className="absolute inset-x-0 top-0 h-1 overflow-hidden rounded-t-xl">
+                <div className="h-full w-1/3 animate-[shimmer_1.2s_ease-in-out_infinite] bg-primary/40 rounded-full" />
+              </div>
+            )}
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead className="font-semibold w-12">#</TableHead>
+                    <TableHead className="font-semibold">Component</TableHead>
+                    <TableHead className="font-semibold">Case</TableHead>
+                    <TableHead className="font-semibold text-center">
+                      Stock
+                    </TableHead>
+                    <TableHead className="font-semibold text-center">
+                      Status
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedItems.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="h-32 text-center text-muted-foreground"
+                      >
+                        No components found.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    paginatedItems.map((item, i) => {
+                      const isLow =
+                        item.stock > 0 && item.stock <= LOW_STOCK_THRESHOLD;
+                      const isOut = item.stock === 0;
+
+                      return (
+                        <TableRow
+                          key={item.component}
+                          className="hover:bg-muted/30 transition-colors"
+                        >
+                          <TableCell className="text-muted-foreground text-xs">
+                            {startIndex + i + 1}
+                          </TableCell>
+                          <TableCell className="font-medium text-card-foreground">
+                            {item.component}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-sm">
+                            {item.caseName}
+                          </TableCell>
+                          <TableCell
+                            className={`text-center font-mono text-sm font-semibold ${
+                              isOut
+                                ? "text-destructive"
+                                : isLow
+                                  ? "text-secondary"
+                                  : "text-success"
+                            }`}
+                          >
+                            {item.stock}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {isOut ? (
+                              <Badge variant="destructive" className="text-xs">
+                                Out of stock
+                              </Badge>
+                            ) : isLow ? (
+                              <Badge
+                                variant="outline"
+                                className="text-xs border-secondary text-secondary"
+                              >
+                                <AlertTriangle className="mr-1 h-3 w-3" />
+                                Low stock
+                              </Badge>
+                            ) : (
+                              <Badge
+                                variant="outline"
+                                className="text-xs border-success text-success"
+                              >
+                                Available
+                              </Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="mt-6">
+              <Pagination>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationPrevious
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      className={
+                        currentPage === 1
+                          ? "pointer-events-none opacity-50"
+                          : "cursor-pointer"
+                      }
+                    />
+                  </PaginationItem>
+
+                  {getPageNumbers().map((page, idx) =>
+                    page === "ellipsis" ? (
+                      <PaginationItem key={`ellipsis-${idx}`}>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    ) : (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          isActive={page === currentPage}
+                          onClick={() => setCurrentPage(page)}
+                          className="cursor-pointer"
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ),
+                  )}
+
+                  <PaginationItem>
+                    <PaginationNext
+                      onClick={() =>
+                        setCurrentPage((p) => Math.min(totalPages, p + 1))
+                      }
+                      className={
+                        currentPage === totalPages
+                          ? "pointer-events-none opacity-50"
+                          : "cursor-pointer"
+                      }
+                    />
+                  </PaginationItem>
+                </PaginationContent>
+              </Pagination>
             </div>
           )}
-
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead className="font-semibold">#</TableHead>
-                  <TableHead className="font-semibold">Component</TableHead>
-                  <TableHead className="font-semibold text-center">
-                    Stock
-                  </TableHead>
-                  <TableHead className="font-semibold text-center">
-                    Status
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={4}
-                      className="h-32 text-center text-muted-foreground"
-                    >
-                      No components found.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filtered.map((item, i) => {
-                    const isLow =
-                      item.stock > 0 && item.stock <= LOW_STOCK_THRESHOLD;
-                    const isOut = item.stock === 0;
-
-                    return (
-                      <TableRow
-                        key={item.component}
-                        className="hover:bg-muted/30 transition-colors"
-                      >
-                        <TableCell className="text-muted-foreground text-xs">
-                          {i + 1}
-                        </TableCell>
-                        <TableCell className="font-medium text-card-foreground">
-                          {item.component}
-                        </TableCell>
-                        <TableCell
-                          className={`text-center font-mono text-sm font-semibold ${
-                            isOut
-                              ? "text-destructive"
-                              : isLow
-                                ? "text-secondary"
-                                : "text-success"
-                          }`}
-                        >
-                          {item.stock}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {isOut ? (
-                            <Badge
-                              variant="destructive"
-                              className="text-xs"
-                            >
-                              Out of stock
-                            </Badge>
-                          ) : isLow ? (
-                            <Badge
-                              variant="outline"
-                              className="text-xs border-secondary text-secondary"
-                            >
-                              <AlertTriangle className="mr-1 h-3 w-3" />
-                              Low stock
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="text-xs border-success text-success"
-                            >
-                              Available
-                            </Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
+        </>
       )}
     </div>
   );
