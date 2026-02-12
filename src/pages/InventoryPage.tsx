@@ -33,16 +33,23 @@ const InventoryPage = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-            <Package className="h-5 w-5 text-primary-foreground" />
+      {/* Hero Banner */}
+      <div className="mb-8 rounded-2xl bg-gradient-to-br from-primary/10 via-accent to-secondary/10 p-6 md:p-8 border border-primary/10">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <p className="text-sm font-handwritten text-primary text-lg mb-1">est 2021 · Kochi</p>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-foreground leading-tight">
+              Maker Station Inventory
+            </h1>
+            <p className="text-muted-foreground mt-1 max-w-lg">
+              A playground for builders — browse all components available at TinkerSpace. 
+              Packed with tools for tinkering, experimenting, and creating something extraordinary.
+            </p>
           </div>
-          <h1 className="text-2xl font-bold text-foreground">Available Components</h1>
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary shadow-lg">
+            <Package className="h-8 w-8 text-primary-foreground" />
+          </div>
         </div>
-        <p className="text-muted-foreground">
-          Browse all components in our makerspace. Check availability before borrowing.
-        </p>
       </div>
 
       <div className="relative mb-6 max-w-md">

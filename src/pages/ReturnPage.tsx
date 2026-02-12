@@ -69,15 +69,11 @@ const ReturnPage = () => {
     <div className="container mx-auto px-4 py-8">
       <div className="mx-auto max-w-lg">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-success">
-              <RotateCcw className="h-5 w-5 text-success-foreground" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground">Return Component</h1>
-          </div>
-          <p className="text-muted-foreground">
-            Return components you've borrowed back to the makerspace.
+        <div className="mb-8 rounded-2xl bg-gradient-to-br from-success/10 via-accent to-primary/5 p-6 border border-success/10">
+          <p className="text-sm font-handwritten text-success text-lg mb-1">Keep the cycle going 🔄</p>
+          <h1 className="text-2xl font-extrabold text-foreground">Return Component</h1>
+          <p className="text-muted-foreground mt-1">
+            Done building? Return components so others can tinker too.
           </p>
         </div>
 

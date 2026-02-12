@@ -18,7 +18,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Navbar />
-        <main className="min-h-[calc(100vh-4rem)]">
+        <main className="min-h-[calc(100vh-4rem)] bg-background">
           <Routes>
             <Route path="/" element={<InventoryPage />} />
             <Route path="/borrow" element={<BorrowPage />} />

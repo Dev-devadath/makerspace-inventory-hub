@@ -72,15 +72,11 @@ const BorrowPage = () => {
     <div className="container mx-auto px-4 py-8">
       <div className="mx-auto max-w-lg">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-secondary">
-              <Wrench className="h-5 w-5 text-secondary-foreground" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground">Borrow Component</h1>
-          </div>
-          <p className="text-muted-foreground">
-            Fill out the form below to borrow a component from the makerspace.
+        <div className="mb-8 rounded-2xl bg-gradient-to-br from-secondary/10 via-accent to-primary/5 p-6 border border-secondary/10">
+          <p className="text-sm font-handwritten text-secondary text-lg mb-1">Maker Thursday vibes ✨</p>
+          <h1 className="text-2xl font-extrabold text-foreground">Borrow Component</h1>
+          <p className="text-muted-foreground mt-1">
+            Grab what you need to tinker, experiment, and create. Happy making!
           </p>
         </div>
 
