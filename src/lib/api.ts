@@ -21,6 +21,40 @@ export interface StockItem {
   stock: number;
 }
 
+// ─── Cache ────────────────────────────────────────────────────────────────────
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
+const cache = new Map<string, CacheEntry<unknown>>();
+
+const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+function getCached<T>(key: string): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.data as T;
+}
+
+function setCache<T>(key: string, data: T): void {
+  cache.set(key, { data, timestamp: Date.now() });
+}
+
+/** Force-clear a specific cache key or the entire cache. */
+export function invalidateCache(key?: string): void {
+  if (key) {
+    cache.delete(key);
+  } else {
+    cache.clear();
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function get<T>(params: Record<string, string>): Promise<T> {
@@ -32,6 +66,22 @@ async function get<T>(params: Record<string, string>): Promise<T> {
     throw new Error(`Request failed: ${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
+}
+
+/**
+ * GET with cache — returns cached data if fresh, otherwise fetches and caches.
+ * `cacheKey` must be unique per request.
+ */
+async function cachedGet<T>(
+  cacheKey: string,
+  params: Record<string, string>,
+): Promise<T> {
+  const hit = getCached<T>(cacheKey);
+  if (hit) return hit;
+
+  const data = await get<T>(params);
+  setCache(cacheKey, data);
+  return data;
 }
 
 async function post<T>(body: Record<string, unknown>): Promise<T> {
@@ -67,7 +117,7 @@ function validatePositiveInt(value: number, fieldName: string): void {
  * GET ?action=getCases → ["TSYS Case1", "TSXS Case2"]
  */
 export async function fetchCases(): Promise<string[]> {
-  return get<string[]>({ action: "getCases" });
+  return cachedGet<string[]>("getCases", { action: "getCases" });
 }
 
 /**
@@ -78,7 +128,10 @@ export async function fetchComponentsByCase(
   caseName: string,
 ): Promise<string[]> {
   validateNotEmpty(caseName, "Case name");
-  return get<string[]>({ action: "getComponents", case: caseName });
+  return cachedGet<string[]>(`getComponents:${caseName}`, {
+    action: "getComponents",
+    case: caseName,
+  });
 }
 
 /**
@@ -108,6 +161,11 @@ export async function borrowComponent(
   if (data.error) {
     return { success: false, message: data.error };
   }
+
+  // Invalidate stock & component caches after a successful borrow
+  invalidateCache("getLiveStock");
+  invalidateCache(`getComponents:${caseName}`);
+
   return {
     success: true,
     message: `Successfully borrowed ${quantity}x ${component}!`,
@@ -148,6 +206,10 @@ export async function returnComponent(
   if (data.error) {
     return { success: false, message: data.error };
   }
+
+  // Invalidate stock cache after a successful return
+  invalidateCache("getLiveStock");
+
   return {
     success: true,
     message: `Successfully returned ${quantity}x ${component}!`,
@@ -160,5 +222,5 @@ export async function returnComponent(
  * → [{ component: "MG996R Servo", stock: 3 }, ...]
  */
 export async function fetchLiveStock(): Promise<StockItem[]> {
-  return get<StockItem[]>({ action: "getLiveStock" });
+  return cachedGet<StockItem[]>("getLiveStock", { action: "getLiveStock" });
 }
