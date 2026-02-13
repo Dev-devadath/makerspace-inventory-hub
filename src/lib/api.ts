@@ -2,6 +2,8 @@
 // Apps Script handles mutations (borrow, return) + lightweight reads (cases, components, holdings)
 // Google Sheets API handles the heavy read (live stock) — much faster than Apps Script
 
+import { sendBorrowAlert, sendReturnAlert } from "./email";
+
 const BASE_URL = import.meta.env.VITE_APPSCRIPT_URL as string;
 const SHEETS_API_KEY = import.meta.env.VITE_SHEETS_API_KEY as string;
 const SPREADSHEET_ID = import.meta.env.VITE_SPREADSHEET_ID as string;
@@ -230,6 +232,11 @@ export async function borrowComponent(
 
   // No cache invalidation — backend cache auto-clears on borrow; let caching handle stock updates
 
+  // Send email alert (non-blocking)
+  sendBorrowAlert({ userId, component, quantity, caseName }).catch((err) =>
+    console.error("Failed to send borrow alert:", err),
+  );
+
   return {
     success: true,
     message: `Successfully borrowed ${quantity}x ${component}!`,
@@ -272,6 +279,11 @@ export async function returnComponent(
   }
 
   // No cache invalidation — backend cache auto-clears on return; let caching handle stock updates
+
+  // Send email alert (non-blocking)
+  sendReturnAlert({ userId, component, quantity }).catch((err) =>
+    console.error("Failed to send return alert:", err),
+  );
 
   return {
     success: true,
@@ -319,7 +331,9 @@ async function fetchLiveStockFromSheets(): Promise<StockItem[]> {
 
   const res = await fetch(url);
   if (!res.ok) {
-    throw new Error(`Sheets API request failed: ${res.status} ${res.statusText}`);
+    throw new Error(
+      `Sheets API request failed: ${res.status} ${res.statusText}`,
+    );
   }
 
   const json: SheetsValuesResponse = await res.json();
@@ -421,7 +435,11 @@ export async function validateUserActive(
   );
 
   if (match) {
-    return { active: true, name: match.name || member.name, avatar: member.avatar };
+    return {
+      active: true,
+      name: match.name || member.name,
+      avatar: member.avatar,
+    };
   }
 
   return { active: false, name: member.name, avatar: member.avatar };
